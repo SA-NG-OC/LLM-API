@@ -80,23 +80,33 @@ Dưới đây là hình ảnh minh chứng việc tích hợp thành công custo
 ### 1. Khái niệm RAG đơn giản
 RAG (Retrieval-Augmented Generation) giúp khắc phục nhược điểm "ảo tưởng" (hallucination) và thiếu thông tin thời gian thực của LLM. Bằng cách trích xuất dữ liệu từ cơ sở tri thức nội bộ (Knowledge Base) và ghép trực tiếp vào Prompt đầu vào làm ngữ cảnh (Context), LLM sẽ chỉ trả lời dựa trên thông tin được cung cấp.
 
-### 2. Cấu trúc mã nguồn ứng dụng RAG
-Trong dự án này, hệ thống RAG được triển khai bằng Node.js với cấu trúc:
-*   **Cơ sở tri thức nội bộ (`company_kb.md`):** Tài liệu lưu trữ các quy định, chính sách hoàn tiền, phân quyền người dùng và đặc tả API của hệ thống Beverage Ordering System (BOS).
-*   **File xử lý RAG (`rag.js`):** 
-    *   Đọc nội dung từ file tri thức `company_kb.md`.
-    *   Khởi tạo OpenAI Client kết nối với API Endpoint của NVIDIA (`https://integrate.api.nvidia.com/v1`) sử dụng `NVIDIA_API_KEY`.
-    *   Sử dụng model `google/diffusiongemma-26b-a4b-it` để suy luận.
-    *   Ghép ngữ cảnh tri thức vào Prompt theo cấu trúc nghiêm ngặt nhằm bắt buộc AI chỉ trả lời từ tài liệu.
-*   **Giao diện tương tác (`index.js`):** Tạo CLI tương tác trong terminal cho phép người dùng hỏi đáp thời gian thực với trợ lý BOS Corporate Assistant.
+### 2. Cấu trúc mã nguồn ứng dụng RAG (tích hợp Vector Database local)
+Hệ thống RAG được tổ chức dạng các mô-đun (modular structure) để dễ mở rộng và bảo trì:
+*   **Cơ sở tri thức (`company_kb.md`):** Lưu trữ tài liệu chính sách của BOS.
+*   **Bộ tạo Embedding (`src/services/embedding.js`):** Gọi model `nvidia/nv-embedqa-e5-v5` qua API của NVIDIA để chuyển văn bản/câu hỏi thành vector (1024 chiều).
+*   **Cơ sở dữ liệu Vector (`src/services/vectordb.js`):** Cung cấp giải pháp cơ sở dữ liệu vector local dựa trên tệp JSON (`src/db/vector_store.json`), hỗ trợ tính độ tương đồng Cosine (Cosine Similarity) để tìm ra đoạn văn bản khớp nhất.
+*   **Bộ gọi LLM (`src/services/llm.js`):** Gọi model `google/diffusiongemma-26b-a4b-it` suy luận.
+*   **Script nạp dữ liệu (`src/ingestion.js`):** Đọc tệp tri thức, chia nhỏ thành các đoạn nội dung (chunks), tạo vector và lưu vào file database JSON local.
+*   **Bộ điều phối RAG (`src/rag.js`):** Nhận câu hỏi, tìm kiếm ngữ cảnh thích hợp nhất từ Vector DB, ghép thành prompt hoàn chỉnh gửi tới LLM.
+*   **Giao diện tương tác (`index.js`):** Giao diện CLI hỏi đáp thời gian thực.
 
-#### Mã nguồn lõi RAG (`rag.js`):
+#### Mã nguồn điều phối RAG (`src/rag.js`):
 ```javascript
-// Đọc context từ file company_kb.md
-const contextPath = path.join(__dirname, "company_kb.md");
-const context = fs.readFileSync(contextPath, "utf-8");
+import { getEmbedding } from "./services/embedding.js";
+import { searchSimilarity } from "./services/vectordb.js";
+import { callLLM } from "./services/llm.js";
 
 export async function runRAG(question) {
+    // 1. Chuyển đổi câu hỏi thành vector embedding (isQuery = true)
+    const queryVector = await getEmbedding(question, true);
+    
+    // 2. Tìm kiếm các đoạn tài liệu tương đồng nhất (Top 2 đoạn khớp nhất)
+    const matchedChunks = searchSimilarity(queryVector, 2);
+    
+    // 3. Kết hợp các đoạn tài liệu tìm được làm context
+    const context = matchedChunks.map(chunk => chunk.text).join("\n\n---\n\n");
+    
+    // 4. Xây dựng prompt kèm ngữ cảnh chọn lọc
     const prompt = `
 You are an AI assistant.
 Answer ONLY using the context below.
@@ -109,14 +119,9 @@ Question:
 ${question}
 `;
 
-    // Gọi API của NVIDIA NIM với custom model và API Key
-    const response = await client.chat.completions.create({
-        model: "google/diffusiongemma-26b-a4b-it",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 1024,
-    });
-    return response.choices[0].message.content;
+    // 5. Gửi tới LLM để sinh câu trả lời
+    const answer = await callLLM(prompt);
+    return answer;
 }
 ```
 
@@ -158,11 +163,16 @@ Dưới đây là hình ảnh kết quả chạy thực tế ứng dụng RAG tr
     ```env
     NVIDIA_API_KEY=your_actual_nvidia_api_key_here
     ```
-3.  **Khởi động ứng dụng CLI:**
+3.  **Chạy script nạp tài liệu (Ingestion) để tạo database vector local:**
+    ```bash
+    node src/ingestion.js
+    ```
+    *Lưu ý: Bạn chỉ cần chạy script này một lần duy nhất khi khởi tạo dự án hoặc khi tài liệu `company_kb.md` có sự cập nhật.*
+4.  **Khởi động ứng dụng CLI:**
     ```bash
     node index.js
     ```
-4.  **Đặt câu hỏi tương tác:**
+5.  **Đặt câu hỏi tương tác:**
     Nhập các câu hỏi liên quan đến hệ thống BOS (ví dụ: *"What can a Staff role do?"* hoặc *"What is the refund rate for cancelling after 5 minutes?"*) để kiểm chứng tính hiệu quả của RAG.
 
 ---
@@ -184,6 +194,6 @@ Dưới đây là hình ảnh kết quả chạy thực tế ứng dụng RAG tr
 
 ## 🎥 Video Demo
 
-[![Watch the demo](https://img.youtube.com/vi/I07JXdR8Wys/maxresdefault.jpg)](https://youtu.be/I07JXdR8Wys)
+[![Watch the demo](https://www.youtube.com/watch?v=iPcwqshhIwU)
 
 > Click the image above to watch the demo on YouTube.

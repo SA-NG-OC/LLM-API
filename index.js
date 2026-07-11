@@ -1,5 +1,5 @@
 import readline from "readline";
-import { runRAG } from "./rag.js";
+import { runRAG } from "./src/rag.js";
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -36,7 +36,6 @@ function askQuestion() {
             console.log("⏳ Processing request...");
             const startTime = Date.now();
             
-            // Execute simple context-injected RAG
             const answer = await runRAG(query);
             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
