@@ -194,6 +194,6 @@ Dưới đây là hình ảnh kết quả chạy thực tế ứng dụng RAG tr
 
 ## 🎥 Video Demo
 
-[![Watch the demo](https://www.youtube.com/watch?v=iPcwqshhIwU)
+[![Watch the demo](https://img.youtube.com/vi/iPcwqshhIwU/maxresdefault.jpg)](https://www.youtube.com/watch?v=iPcwqshhIwU)
 
 > Click the image above to watch the demo on YouTube.
