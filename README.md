@@ -179,16 +179,14 @@ Dưới đây là hình ảnh kết quả chạy thực tế ứng dụng RAG tr
 
 ## V. Kết luận & Hướng phát triển
 
-*   **Kết luận:** Phương pháp sử dụng API Key kết hợp tự xây dựng RAG giúp doanh nghiệp hoàn toàn làm chủ công nghệ, bảo mật thông tin tối đa và linh hoạt tùy biến giao diện cũng như mô hình sử dụng với chi phí cực kỳ tối ưu.
-*   **Hướng phát triển:** 
-    *   **Nâng cấp cơ chế RAG sang Vector Search RAG:**
-        *   *Hạn chế của RAG hiện tại (Context Injection thô):* Hiện tại, chúng ta đang đọc toàn bộ nội dung tệp tri thức `company_kb.md` rồi "nhồi" trực tiếp vào prompt để làm ngữ cảnh. Phương pháp này chỉ phù hợp với tài liệu ngắn. Khi cơ sở dữ liệu doanh nghiệp phình to hàng trăm hoặc hàng ngàn trang, việc nhồi toàn bộ sẽ làm **vượt quá giới hạn ngữ cảnh (Context Window)** của LLM, **tăng chi phí token** đáng kể và gây ra hiện tượng **nhiễu thông tin** (khiến mô hình bỏ sót chi tiết quan trọng ở giữa văn bản - "Lost in the Middle").
-        *   *Giải pháp Vector và lý do cần sử dụng:*
-            1.  **Vector Embedding:** Chuyển đổi dữ liệu văn bản từ ngôn ngữ tự nhiên thành các chuỗi số (vector) đại diện cho ngữ nghĩa của chúng. Các đoạn văn có ý nghĩa tương đương nhau sẽ có tọa độ không gian vector gần nhau.
-            2.  **Vector Database (như Pinecone, Milvus, ChromaDB):** Hệ cơ sở dữ liệu chuyên dụng để lưu trữ và truy vấn nhanh các vector này.
-            3.  **Cơ chế tìm kiếm tương đồng (Similarity Search):** Khi người dùng đặt câu hỏi, câu hỏi đó cũng được vector hóa. Hệ thống thực hiện tính toán độ tương đồng (ví dụ: Cosine Similarity) để tìm ra 3-5 đoạn văn bản liên quan mật thiết nhất với câu hỏi trong hàng triệu dòng tài liệu, thay vì phải gửi cả file lớn.
-            4.  **Hiệu quả:** Cách tiếp cận này giúp tiết kiệm token tối đa, giảm thời gian phản hồi (latency), và duy trì độ chính xác cực cao ngay cả khi cơ sở dữ liệu doanh nghiệp mở rộng quy mô lớn.
-    *   Tối ưu hóa tốc độ phản hồi (latency) bằng cách tinh chỉnh temperature và cấu hình stream câu trả lời.
+*   **Kết luận:**
+    *   Hệ thống đã chuyển đổi thành công từ RAG thô sang cơ chế **Vector RAG local**, kết hợp giữa mô hình Embedding `nvidia/nv-embedqa-e5-v5` và mô hình ngôn ngữ `google/diffusiongemma-26b-a4b-it` thông qua cổng API NVIDIA NIM.
+    *   Việc chia nhỏ tài liệu (Chunking) và áp dụng thuật toán tính độ tương đồng Cosine trên cơ sở dữ liệu vector local (`vector_store.json`) giúp giải quyết triệt để vấn đề vượt ngưỡng ngữ cảnh (Context Window), tối ưu hóa lượng token tiêu thụ và tăng tốc độ xử lý câu hỏi của người dùng.
+*   **Hướng phát triển:**
+    *   **Nâng cấp lên Production-grade Vector Database:** Thay thế cơ sở dữ liệu vector local dạng file JSON hiện tại bằng các hệ thống chuyên dụng như **Pinecone, Milvus, ChromaDB hoặc LanceDB** để tối ưu hóa tốc độ tìm kiếm (sử dụng chỉ mục HNSW thay cho việc duyệt tuần tự tính toán Cosine Similarity trực tiếp trên toàn bộ dữ liệu).
+    *   **Cải tiến kỹ thuật Chunking (Phân đoạn):** Sử dụng các bộ tách từ nâng cao (ví dụ: `Recursive Character Text Splitter` kèm chunk overlap khoảng 10-20%) nhằm đảm bảo không bị mất ngữ cảnh tại các điểm phân đoạn tài liệu.
+    *   **Tìm kiếm kết hợp (Hybrid Search) & Re-ranking:** Kết hợp giữa tìm kiếm theo từ khóa truyền thống (BM25) và tìm kiếm theo ngữ nghĩa (Vector Search), sau đó sử dụng mô hình Re-ranker (như Cohere Rerank hoặc NVIDIA NeMo Retriever) để chọn lọc ra các đoạn tài liệu có độ liên quan cao nhất trước khi gửi vào LLM.
+    *   Tối ưu hóa tốc độ phản hồi bằng cách cấu hình stream câu trả lời trực tiếp từ LLM.
 
 ---
 
